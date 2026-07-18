@@ -2899,6 +2899,12 @@ public class Player extends EntityHuman implements CommandSender, ChunkLoader, I
         if (this.spawned) {
             this.drainInboundPackets();
 
+            // Draining may close the player synchronously (e.g. self-kick), nulling the
+            // inventory; bail out before the getInventory() access below throws an NPE.
+            if (!this.loggedIn) {
+                return true;
+            }
+
             if (this.pendingClose != null) {
                 final String closeReason = this.pendingClose;
                 this.pendingClose = null;
@@ -3304,6 +3310,11 @@ public class Player extends EntityHuman implements CommandSender, ChunkLoader, I
 
     @Override
     public void sendMessage(String message) {
+        if (message.isEmpty()) {
+            log.warn("{} attempted to send an empty message", name);
+            return;
+        }
+        
         final MessageOnly messageOnly = new MessageOnly();
         messageOnly.setMessage(this.server.getLanguage().tr(message));
 
@@ -3611,12 +3622,13 @@ public class Player extends EntityHuman implements CommandSender, ChunkLoader, I
     /**
      * Send an actionbar text above the player's item bar.
      *
-     * @param title    消息
-     * @param fadein   淡入时间
-     * @param duration 持续时间
-     * @param fadeout  淡出时间
+     * @param title    the message
+     * @param fadein   the fade-in time
+     * @param duration the display duration
+     * @param fadeout  the fade-out time
      */
     public void sendActionBar(String title, int fadein, int duration, int fadeout) {
+        this.setTitleAnimationTimes(fadein, duration, fadeout);
         SetTitlePacket pk = new SetTitlePacket();
         pk.setTitleType(SetTitlePacket.TitleType.ACTIONBAR);
         pk.setTitleText(Strings.nullToEmpty(title));
@@ -3649,6 +3661,7 @@ public class Player extends EntityHuman implements CommandSender, ChunkLoader, I
      */
 
     public void setRawTextActionBar(RawText text, int fadein, int duration, int fadeout) {
+        this.setTitleAnimationTimes(fadein, duration, fadeout);
         SetTitlePacket pk = new SetTitlePacket();
         pk.setTitleType(SetTitlePacket.TitleType.ACTIONBAR_TEXT_OBJECT);
         pk.setTitleText(text == null ? "" : text.toRawText());
@@ -4327,7 +4340,7 @@ public class Player extends EntityHuman implements CommandSender, ChunkLoader, I
     /**
      * The implementation of setExperience is used to set the level
      *
-     * @param level 等级
+     * @param level the level
      */
     public void sendExperienceLevel(int level) {
         if (this.spawned) {
